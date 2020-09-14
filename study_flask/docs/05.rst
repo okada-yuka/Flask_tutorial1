@@ -1,0 +1,233 @@
+===================
+5. アプリを公開する  
+===================
+作成したウェブアプリケーションを世の中の人に使ってもらえるようにします。
+
+
+Flaskをデプロイする方法
+=======================
+
+:参考: `Deployment Options — Flask 0.10.1 documentation <http://flask.pocoo.org/docs/deploying/>`_
+
+色々ありますが、私は以下の３つがおすすめです。
+
+* apache の mod_wsgi
+* uWSGI + nginx
+* PaaS: heroku, dotCloud
+
+
+mod_wsgi
+=============
+* 簡単。
+* でも、遅い
+
+詳細は省略！
+
+こちらの記事がオススメです。
+
+* `Apache+mod_wsgi+Flaskインストール | Azrael <http://zafiel.wingall.com/archives/2309>`_
+
+
+uWSGI + nginx
+=============
+* uwsgi（とgunicorn）はわりとよく使われていそうなWSGIサーバー。
+* nginxからstaticファイルを直接配信させたり、キャッシュを使ったりできます。
+* ただし、Linux, nginxに関する知識も必要となります。
+* uwsgiサーバーを自動起動・自動再起動するのに他の仕組みを使う必要があります。
+    * supervisor, circusなど
+
+
+手順
+----
+1. uwsgiのインストールをします。::
+
+    pip install uwsgi
+
+
+2. nginxをインストールして設定をします。::
+   
+    location = /flaskr { rewrite ^ /flaskr/; }
+    location /flaskr { try_files $uri @flaskr;}
+    location @flaskr {
+        include uwsgi_params;
+        uwsgi_param SCRIPT_NAME /flaskr;
+        uwsgi_modifier1 30;
+        uwsgi_pass unix:/tmp/uwsgi.sock;
+    }
+
+
+3. /path/to/flaskrにflaskrディレクトリを置きます::
+
+    /path/to/flaskr/
+      |- flaskr/
+         |- __init__.py
+         |- ...
+      |- manage.py
+      |- requirements.txt
+
+
+4. /path/to/flaskrにvirtualenvで必要なライブラリをインストールした環境を作ります::
+
+    cd /path/to/flaskr
+    virtualenv env
+    source env/bin/activate
+    pip install -r requirements.txt
+
+
+5. uwsgiを実行します。::
+
+    sudo -u nginx /path/to/uwsgi -s /tmp/uwsgi.sock --chdir /path/to/flaskr --exec-as-user nginx -H env --module flaskr --callable app
+
+
+参考
+----
+こちらの記事がオススメです。
+
+* `Python Flaskアプリを nginx + uWSGI 環境下へデプロイしたのでメモ | Azrael <http://zafiel.wingall.com/archives/7513>`_
+
+
+PaaS: heroku
+=============
+今日はherokuにデプロイしてみます。
+
+* PaaSを使えば、linuxとかnginxとかを直接意識する必要がなくなります。
+* アプリの開発に集中できます。
+
+* ただし、PaaSの枠を外れることをしようとすると諦める or がんばる必要がある。
+
+
+1. アカウントを作成
+--------------------
+
+.. image:: img/heroku_1.png
+    :width: 70%
+
+.. image:: img/heroku_2.png
+    :width: 70%
+
+.. image:: img/heroku_3.png
+    :width: 70%
+
+.. image:: img/heroku_4.png
+    :width: 70%
+
+.. image:: img/heroku_5.png
+    :width: 70%
+
+
+2. ツールをインストール
+------------------------
+次のURLから各自のOSに合わせたToolbeltをダウンロードしてインストールします。
+
+* `Heroku Toolbelt <https://toolbelt.heroku.com/>`_
+
+インストールが完了したら、terminalからheroku login
+を実行してherokuにログインできることを確認します。::
+
+    $ heroku login
+    Enter your Heroku credentials.
+    Email: daisuke@dkpyn.com
+    Password (typing will be hidden):
+    Found existing public key: /Users/daisuke/.ssh/id_rsa.pub
+    Uploading SSH public key /Users/daisuke/.ssh/id_rsa.pub... done
+    Authentication successful.
+
+
+3. heroku用にファイルを変更
+----------------------------
+開発環境にgunicornをインストールします。::
+
+    pip install gunicorn
+
+
+requirements.txtにgunicornを追加します。
+
+requirements.txt
+
+.. literalinclude:: ../samples/05/requirements.txt
+
+
+Procfileを追加する。
+
+Procfile
+
+.. literalinclude:: ../samples/05/Procfile
+
+
+Herokuのアプリを起動するForemanで起動のテスト::
+
+    $ foreman start
+    01:19:17 web.1  | started with pid 2062
+    01:19:17 web.1  | 2013-11-04 01:19:17 [2062] [INFO] Starting gunicorn 18.0
+    01:19:17 web.1  | 2013-11-04 01:19:17 [2062] [INFO] Listening at: http://0.0.0.0:5000 (2062)
+    01:19:17 web.1  | 2013-11-04 01:19:17 [2062] [INFO] Using worker: sync
+    01:19:17 web.1  | 2013-11-04 01:19:17 [2065] [INFO] Booting worker with pid: 2065
+
+
+
+4. gitリポジトリを作成
+----------------------
+作成しているflaskrをgitで管理するようにします。すでに作っていたらそのままでOK::
+
+    cd Flaskrを作成しているディレクトリ
+    echo '*.pyc' > .gitignore
+    git init
+    git add .
+    git commit -m 'init'
+
+
+4. herokuのアプリを作成
+-----------------------
+heroku createでアプリを作成します。::
+
+    $ heroku create
+    Creating peaceful-wildwood-3278... done, stack is cedar
+    http://peaceful-wildwood-3278.herokuapp.com/ | git@heroku.com:peaceful-wildwood-3278.git
+    Git remote heroku added
+
+自動でgitにremoteが追加されます。
+
+
+5. herokuにpush
+---------------
+::
+
+    git push heroku master
+
+
+ウェブのプロセスを０から１に設定::
+
+    $ heroku ps:scale web=1
+    Scaling web dynos... done, now running 1
+
+プロセスの状態の確認::
+
+    $ heroku ps
+    === web (1X): `gunicorn flaskr:app`
+    web.1: up 2013/11/04 01:24:53 (~ 52s ago)
+
+
+7. 動作を確認
+-------------
+heroku createのときに表示されたURLで確認する。
+
+* http://peaceful-wildwood-3278.herokuapp.com/
+
+わからなければ、herokuにログインしてappsのsettingsで確認する。
+
+あとはgit remote -vでみるとか。
+（herokuはあまり使ったことないので知ってる人いたら教えてー！::
+
+    git remote -v
+    heroku  git@heroku.com:gentle-beyond-1917.git (fetch)
+    heroku  git@heroku.com:gentle-beyond-1917.git (push)
+
+
+8. uwsgi
+----------
+ここではgunicornを使いましたが、uwsgiを使ってもできます。
+
+* `uwsgi-docs/tutorials/heroku_python.rst at master · unbit/uwsgi-docs <https://github.com/unbit/uwsgi-docs/blob/master/tutorials/heroku_python.rst>`_
+
+
+
